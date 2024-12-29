@@ -35,10 +35,9 @@ function handleCellClick(index) {
 
     makeMove(index, currentPlayer);
 
-    // Check for a winner after the player's move
     const winningIndices = checkWin(currentPlayer);
     if (winningIndices) {
-        declareWinner(winningIndices); // Declare winner and highlight cells immediately
+        declareWinner(winningIndices); // Declare winner and highlight cells
         return;
     }
 
@@ -47,7 +46,6 @@ function handleCellClick(index) {
         return;
     }
 
-    // Switch the turn to the other player
     switchTurn();
 }
 
@@ -142,6 +140,7 @@ function findBestMove() {
 function checkWin(player) {
     for (let condition of winConditions) {
         if (condition.every(index => gameState[index] === player)) {
+            stopTimer(); // Ensure the timer stops if there's a winner
             return condition; // Return the winning indices
         }
     }
@@ -149,31 +148,32 @@ function checkWin(player) {
 }
 
 function declareWinner(winningIndices) {
-    titleHeader.style.color = 'white';
-    titleHeader.textContent = `${currentPlayer} Wins!`; // Display the winner
-    isGamePaused = true;  // Pause the game to prevent further interaction
+    stopTimer(); // Stop the timer
+    titleHeader.textContent = `${currentPlayer} Wins!`;
+    titleHeader.style.color = currentPlayer === 'X' ? Xcolor : Ocolor;
+    
+    isGamePaused = true; // Pause the game to prevent further interaction
 
-    // Immediately highlight the winning cells
+    // Highlight the winning cells
     winningIndices.forEach(index => {
-        if (isdark) {
-            cells[index].style.background = (cells[index] === player) ? '#122a22' : '#2a1218'; // Set the background for the winning cells
-        } else {
-            cells[index].style.background = (cells[index] === player) ? '#50be99' : '#d96a74'; // Set the background for the winning cells
-        }
+        cells[index].style.background = currentPlayer === player
+            ? (isdark ? '#122a22' : '#50be99')
+            : (isdark ? '#2a1218' : '#d96a74');
     });
 
     restartBtn.style.visibility = 'visible'; // Show the restart button
 }
+
 
 function isDraw() {
     return gameState.every(cell => cell !== '');
 }
 
 function endGame(message) {
-    stopTimer();
+    stopTimer(); // Stop the timer
     titleHeader.textContent = message;
     titleHeader.style.color = 'white';
-    isGamePaused = true;
+    isGamePaused = true; // Pause the game to prevent further interaction
     restartBtn.style.visibility = 'visible';
 }
 
