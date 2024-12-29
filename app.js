@@ -5,226 +5,277 @@ const xPlayerDisplay = document.querySelector('#xPlayerDisplay');
 const oPlayerDisplay = document.querySelector('#oPlayerDisplay');
 const restartBtn = document.querySelector('#restartBtn');
 
-// Initialize variables
-let player = 'X';
-let player_mark = 'X';
-let bot;
-let bot_mark = bot;
-let isPauseGame = false;
-let isGameStart = false;
-let timerInterval; // Timer ID
-let timerCount; // Countdown value
+// Game state variables
+let currentPlayer = '';
+let player = '';
+let bot = '';
+let isGamePaused = false;
+let gameStarted = false;
+let timerInterval;
+let countdown = 2; // Countdown in seconds
+let difficulty = 'hard';
+let Xcolor = '#1892EA';
+let Ocolor = '#A737FF';
+let isdark = true;
 
-// Array to track cell states
-const inputCells = [
-    '', '', '',
-    '', '', '',
-    '', '', ''
-];
-
-// Winning conditions
+const gameState = Array(9).fill('');
 const winConditions = [
     [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
     [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
-    [0, 4, 8], [2, 4, 6] // Diagonals
+    [0, 4, 8], [2, 4, 6]             // Diagonals
 ];
 
-// Add event listeners to cells
-cells.forEach((cell, index) => {
-    cell.addEventListener('click', () => tapCell(cell, index));
-});
+// Event Listeners
+cells.forEach((cell, index) => cell.addEventListener('click', () => handleCellClick(index)));
+restartBtn.addEventListener('click', resetGame);
 
-// Function to handle cell tap
-function tapCell(cell, index) {
-    player_mark = player;
-    if (cell.textContent === '' && !isPauseGame) {
-        stopTimer(); // Stop timer
-        isGameStart = true;
-        updateCell(cell, index); // Update cell with player's move
+// Core Game Logic
+function handleCellClick(index) {
+    if (gameState[index] !== '' || isGamePaused || !gameStarted) return;
 
-        if (!checkWinner()) {
-            changePlayer(); // Switch turn to bot
-            stopTimer(); // Ensure timer doesn't run during bot's turn
-            Botpick(); // Bot makes its move
+    makeMove(index, currentPlayer);
+
+    // Check for a winner after the player's move
+    const winningIndices = checkWin(currentPlayer);
+    if (winningIndices) {
+        declareWinner(winningIndices); // Declare winner and highlight cells immediately
+        return;
+    }
+
+    if (isDraw()) {
+        endGame("It's a Draw!");
+        return;
+    }
+
+    // Switch the turn to the other player
+    switchTurn();
+}
+
+function makeMove(index, player) {
+    gameState[index] = player; // Update the game state with the current player's move
+    cells[index].textContent = player; // Display the player's move in the cell
+    cells[index].style.color = player === 'X' ? Xcolor : Ocolor; // Apply color based on player
+}
+
+function switchTurn() {
+    currentPlayer = currentPlayer === 'X' ? 'O' : 'X'; // Toggle between players
+    updateTurnIndicator();  // Update the UI to reflect whose turn it is
+
+    // If it's the bot's turn, automatically make the move after a delay
+    if (currentPlayer === bot) {
+        isGamePaused = true;
+        setTimeout(() => {
+            if (difficulty === 'easy') {
+                easyBotMove();
+            } else {
+                botMove();
+            }
+            isGamePaused = false;
+        }, 125);
+    } else {
+        startTimer();
+    }
+}
+
+function botMove() {
+    stopTimer(); // Stop the timer when the bot makes a move
+
+    const bestMove = findBestMove(); // Find the best move for the bot
+    makeMove(bestMove, currentPlayer); // Make the move on the board
+
+    const winningIndices = checkWin(currentPlayer); // Check if the bot won
+    if (winningIndices) {
+        declareWinner(winningIndices); // Declare the bot's win and highlight the winning cells
+        return;
+    }
+
+    if (isDraw()) {
+        endGame("It's a Draw!"); // Check if it's a draw
+        return;
+    }
+
+    switchTurn(); // Switch turn to the player after the bot moves
+}
+
+function easyBotMove() {
+    stopTimer(); // Stop the timer when the bot makes a move
+
+    const availableMoves = gameState
+        .map((cell, index) => cell === '' ? index : null)
+        .filter(index => index !== null);
+
+    const randomMove = availableMoves[Math.floor(Math.random() * availableMoves.length)]; // Choose a random available move
+    makeMove(randomMove, currentPlayer); // Make the move on the board
+
+    const winningIndices = checkWin(currentPlayer); // Check if the bot won
+    if (winningIndices) {
+        declareWinner(winningIndices); // Declare the bot's win and highlight the winning cells
+        return;
+    }
+
+    if (isDraw()) {
+        endGame("It's a Draw!"); // Check if it's a draw
+        return;
+    }
+
+    switchTurn(); // Switch turn to the player after the bot moves
+}
+
+function findBestMove() {
+    let bestScore = -Infinity;
+    let move = -1;
+    for (let i = 0; i < gameState.length; i++) {
+        if (gameState[i] === '') {
+            gameState[i] = bot;
+            let score = minimax(gameState, false);
+            gameState[i] = '';
+            if (score > bestScore) {
+                bestScore = score;
+                move = i;
+            }
         }
     }
+    return move;
 }
 
-// Update cell with player's move
-function updateCell(cell, index) {
-    cell.textContent = player;
-    inputCells[index] = player;
-    cell.style.color = (player === 'X') ? '#1892EA' : '#A737FF';
-}
-
-// Change player turn
-function changePlayer() {
-    player = (player === 'X') ? 'O' : 'X';
-}
-
-// Check for a winner or draw
-function checkWinner() {
-    for (const [a, b, c] of winConditions) {
-        if (inputCells[a] === player &&
-            inputCells[b] === player &&
-            inputCells[c] === player) {
-            declareWinner([a, b, c]);
-
-            isGameStart = false;
-            return true;
+// Utility Functions
+function checkWin(player) {
+    for (let condition of winConditions) {
+        if (condition.every(index => gameState[index] === player)) {
+            return condition; // Return the winning indices
         }
     }
-
-    // Check for a draw
-    if (inputCells.every(cell => cell !== '')) {
-        declareDraw();
-        return true;
-    }
-
-    return false;
+    return null; // No winner yet
 }
 
-// Declare the winner
 function declareWinner(winningIndices) {
     titleHeader.style.color = 'white';
-    titleHeader.textContent = `${player} Wins!`;
-    isPauseGame = true;
+    titleHeader.textContent = `${currentPlayer} Wins!`; // Display the winner
+    isGamePaused = true;  // Pause the game to prevent further interaction
 
-    // Highlight winning cells
+    // Immediately highlight the winning cells
     winningIndices.forEach(index => {
-        // cells[index].style.background = '#2A2343'; 
-        cells[index].style.background = (cells[index] === player_mark) ? '#122a22' : '#2a1218';
-    });
-
-    restartBtn.style.visibility = 'visible';
-}
-
-// Declare a draw
-function declareDraw() {
-    titleHeader.style.color = 'white';
-    titleHeader.textContent = 'Draw!';
-    isPauseGame = true;
-    restartBtn.style.visibility = 'visible';
-    cells.forEach(cell => {
-        cell.style.background = '#614cb2';
-    });
-}
-
-// function to choose player
-function choosePlayer(selectedPlayer) {
-    // Ensure the game hasn't started
-    if (!isGameStart) {
-        // Override the selected player value
-        player = selectedPlayer
-        
-        if (player == 'X') {
-            // Hightlight X display
-            bot = 'O';
-            player_mark = 'X'
-            xPlayerDisplay.classList.add('player-active')
-            oPlayerDisplay.classList.remove('player-active')
+        if (isdark) {
+            cells[index].style.background = (cells[index] === player) ? '#122a22' : '#2a1218'; // Set the background for the winning cells
         } else {
-            // Hightlight O display
-            bot = 'X';
-            player_mark = 'O'
-            xPlayerDisplay.classList.remove('player-active')
-            oPlayerDisplay.classList.add('player-active')
+            cells[index].style.background = (cells[index] === player) ? '#50be99' : '#d96a74'; // Set the background for the winning cells
         }
+    });
+
+    restartBtn.style.visibility = 'visible'; // Show the restart button
+}
+
+function isDraw() {
+    return gameState.every(cell => cell !== '');
+}
+
+function endGame(message) {
+    stopTimer();
+    titleHeader.textContent = message;
+    titleHeader.style.color = 'white';
+    isGamePaused = true;
+    restartBtn.style.visibility = 'visible';
+}
+
+function resetGame() {
+    gameState.fill('');
+    cells.forEach(cell => {
+        cell.textContent = '';
+        if (isdark) {
+            cell.style.background = '';
+        } else {
+            cell.style.background = 'var(--primary-light)';
+        }
+    });
+    currentPlayer = '';
+    isGamePaused = false;
+    gameStarted = false;
+    titleHeader.textContent = 'Choose';
+    titleHeader.style.color = 'white';
+    restartBtn.style.visibility = 'hidden';
+    xPlayerDisplay.classList.remove('player-active');
+    oPlayerDisplay.classList.remove('player-active');
+}
+
+function choosePlayer(selectedPlayer) {
+    if (!gameStarted) { // Ensure the game hasn't started
+        player = selectedPlayer;
+        currentPlayer = selectedPlayer;
+        bot = player === 'X' ? 'O' : 'X';
+        gameStarted = true;
+
+        // Highlight the correct player display
+        if (player === 'X') {
+            xPlayerDisplay.classList.add('player-active');
+            oPlayerDisplay.classList.remove('player-active');
+        } else {
+            xPlayerDisplay.classList.remove('player-active');
+            oPlayerDisplay.classList.add('player-active');
+
+            // If the bot is 'X', make the first move
+            currentPlayer = bot; // Set turn to the bot
+            
+            // Bot makes the first move
+            if (difficulty === 'easy') {
+                easyBotMove();
+            } else {
+                botMove();  
+            }        
+            currentPlayer = player; // Return turn to the player
+        }
+        updateTurnIndicator();
     }
 }
 
-// Restart the game
-restartBtn.addEventListener('click', () => {
-    restartBtn.style.visibility = 'hidden';
-    inputCells.fill('');
-    cells.forEach(cell => {
-        cell.textContent = '';
-        cell.style.background = '';
-    });
-    isPauseGame = false;
-    isGameStart = false;
-    titleHeader.style.color = 'white';
-    titleHeader.textContent = 'Choose';
-});
 
-// Bot logic
-function Botpick() {
-    isPauseGame = true; // Pause the game during bot's turn
-
-    setTimeout(() => {
-        let bestScore = -Infinity;
-        let move;
-
-        for (let i = 0; i < inputCells.length; i++) {
-            if (inputCells[i] === '') {
-                inputCells[i] = player; // Simulate bot's move
-                let score = minimax(inputCells, false); // Evaluate move
-                inputCells[i] = ''; // Undo move
-                if (score > bestScore) {
-                    bestScore = score;
-                    move = i;
-                }
-            }
-        }
-
-        if (move !== undefined) {
-            updateCell(cells[move], move); // Bot makes the best move
-            if (!checkWinner()) {
-                changePlayer(); // Switch back to player's turn
-                startTimer(); // Start timer for player's turn
-            }
-        }
-
-        isPauseGame = false; // Resume the game
-    }, 150); // Bot takes 0.15 seconds to move
+function updateTurnIndicator() {
+    if (currentPlayer === 'X') {
+        xPlayerDisplay.classList.add('player-active');
+        oPlayerDisplay.classList.remove('player-active');
+    } else {
+        xPlayerDisplay.classList.remove('player-active');
+        oPlayerDisplay.classList.add('player-active');
+    }
 }
 
-// Timer logic
+// Timer Logic
 function startTimer() {
-    timerCount = 2; // Set countdown to 2 seconds
+    countdown = 2;
     updateTimerDisplay();
-
     timerInterval = setInterval(() => {
-        timerCount--;
+        countdown--;
         updateTimerDisplay();
-
-        if (timerCount <= 0) {
-            clearInterval(timerInterval); // Stop timer
-            titleHeader.textContent = 'Time Up! Bot’s Turn'; // Show timeout message
-            changePlayer(); // Switch to bot
-            Botpick(); // Bot moves
+        if (countdown <= 0) {
+            clearInterval(timerInterval);
+            titleHeader.textContent = "Time Out!";
+            titleHeader.style.color = 'red';
+            botMove();
         }
     }, 1000);
 }
 
 function stopTimer() {
-    clearInterval(timerInterval); // Stop the timer
-    titleHeader.textContent = ''; // Clear timer display
+    clearInterval(timerInterval);
 }
 
-// Update timer display
 function updateTimerDisplay() {
-    titleHeader.textContent = `00:0${timerCount}`;
-    titleHeader.style.color = 'red';
-    if (timerCount <= 0) {
-        titleHeader.style.color = 'white';
-    }
+    titleHeader.textContent = `00:0${countdown}`;
+    titleHeader.style.color = countdown <= 0 ? 'white' : 'red';
 }
 
-// Minimax algorithm
+// Minimax Algorithm
 function minimax(board, isMaximizing) {
-    let enemy = (player === 'X') ? 'O' : 'X';
-    if (checkWinnerForMinimax(player)) return 10;
-    if (checkWinnerForMinimax(enemy)) return -10;
-    if (board.every(cell => cell !== '')) return 0; // Draw
+    if (checkWin(bot)) return 10;
+    if (checkWin(player)) return -10;
+    if (board.every(cell => cell !== '')) return 0;
 
     if (isMaximizing) {
         let bestScore = -Infinity;
         for (let i = 0; i < board.length; i++) {
             if (board[i] === '') {
-                board[i] = player;
+                board[i] = bot;
                 let score = minimax(board, false);
-                board[i] = ''; // Undo move
+                board[i] = '';
                 bestScore = Math.max(score, bestScore);
             }
         }
@@ -233,9 +284,9 @@ function minimax(board, isMaximizing) {
         let bestScore = Infinity;
         for (let i = 0; i < board.length; i++) {
             if (board[i] === '') {
-                board[i] = enemy;
+                board[i] = player;
                 let score = minimax(board, true);
-                board[i] = ''; // Undo move
+                board[i] = '';
                 bestScore = Math.min(score, bestScore);
             }
         }
@@ -243,11 +294,85 @@ function minimax(board, isMaximizing) {
     }
 }
 
-// Helper to check winner for minimax
-function checkWinnerForMinimax(mark) {
-    return winConditions.some(([a, b, c]) => 
-        inputCells[a] === mark && 
-        inputCells[b] === mark && 
-        inputCells[c] === mark
-    );
+// Initialize
+resetGame();
+
+// Settings
+function togglePopup() {
+    const popup = document.getElementById('popup');
+    popup.classList.toggle('hidden');
 }
+
+// Manage Difficulty checkboxes
+document.querySelectorAll('input[name="difficulty"]').forEach((checkbox) => {
+    checkbox.addEventListener('change', function () {
+        if (this.checked) {
+            // Uncheck all other checkboxes in the same group
+            document.querySelectorAll('input[name="difficulty"]').forEach((other) => {
+                if (other !== this) other.checked = false;
+            });
+
+            // Set difficulty based on selection
+            if (document.getElementById('easyDifficulty').checked) {
+                difficulty = 'easy';
+            } else {
+                difficulty = 'hard';
+            }
+        }
+    });
+});
+
+document.querySelectorAll('input[name="theme"]').forEach((checkbox) => {
+    checkbox.addEventListener('change', function () {
+        // If the checkbox is checked, uncheck the other
+        if (this.checked) {
+            document.querySelectorAll('input[name="theme"]').forEach((other) => {
+                if (other !== this) other.checked = false;
+            });
+
+            // Apply the theme styles based on the selected checkbox
+            if (document.getElementById('lightTheme').checked) {
+                Xcolor = '#36a9fa';
+                Ocolor = '#9939e3';
+                isdark = false;
+                document.querySelector('#xPlayerDisplay').style.background = 'var(--primary-light)';
+                document.querySelector('#xPlayerDisplay').style.border = 'var(--primary-light)';
+                document.querySelector('#xPlayerDisplay').style.color = 'var(--Xcolor-light)';
+
+                document.querySelector('#oPlayerDisplay').style.background = 'var(--primary-light)';
+                document.querySelector('#oPlayerDisplay').style.border = 'var(--primary-light)';
+                document.querySelector('#oPlayerDisplay').style.color = 'var(--Ocolor-light)';
+
+                document.querySelector('#restartBtn').style.background = 'var(--primary-light)';
+
+                const cells = document.querySelectorAll('#board .cell');
+                cells.forEach((cell) => {
+                    cell.style.background = 'var(--primary-light)';
+                })
+
+                document.querySelector('main').style.background = 'var(--background-light)';
+            } else if (document.getElementById('darkTheme').checked) {
+                Xcolor = '#1892EA';
+                Ocolor = '#A737FF';
+                isdark = true;
+                document.querySelector('#xPlayerDisplay').style.background = 'var(--primary-dark)';
+                document.querySelector('#xPlayerDisplay').style.border = 'var(--primary-dark)';
+                document.querySelector('#xPlayerDisplay').style.color = 'var(--Xcolor)';
+
+                document.querySelector('#oPlayerDisplay').style.background = 'var(--primary-dark)';
+                document.querySelector('#oPlayerDisplay').style.border = 'var(--primary-dark)';
+                document.querySelector('#oPlayerDisplay').style.color = 'var(-Ocolor)';
+
+                document.querySelector('#restartBtn').style.background = 'var(--primary-dark)';
+
+                const cells = document.querySelectorAll('#board .cell');
+                cells.forEach((cell) => {
+                    cell.style.background = 'var(--primary-dark)';
+                    
+                })
+
+                document.querySelector('main').style.background = 'var(--background-dark)';
+            }
+        }
+    });
+});
